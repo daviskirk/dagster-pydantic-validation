@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "dagster-pydantic-validation"
+version = "0.1.0"
+description = ""
+authors = ["Davis Kirkendall <davis.e.kirkendall@gmail.com>"]
+readme = "README.md"
+packages = [{include = "dagster_pydantic_validation"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pydantic = "^1.10.4"
+dagster = "^1.1.10"
+
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^0.991"
+pytest = "^7.2.1"
+ruff = "^0.0.222"
+black = "^22.12.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.ruff]
+extend-ignore = ["E501"]  # handled by black
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules"
