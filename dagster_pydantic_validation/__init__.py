@@ -21,16 +21,16 @@ logger = get_dagster_logger()
 
 
 @overload
-def model_to_config_schema(model: Type[BaseModel]) -> dagster.Shape:
+def model_to_config_schema(model: Type[BaseModel], convert: bool = ...) -> dagster.Shape:
     ...
 
 
 @overload
-def model_to_config_schema(model: Any) -> Any:
+def model_to_config_schema(model: Any, convert: bool = ...) -> Any:
     ...
 
 
-def model_to_config_schema(model):
+def model_to_config_schema(model, convert = False):
     """Convert pydantic model types to dagster config schema.
 
     >>> class Child(BaseModel):
@@ -42,8 +42,7 @@ def model_to_config_schema(model):
     ...     children: list[Child]
     ...     optional_child: Child | None = None
     ...
-    >>> config_schema = model_to_config_schema(Parent)
-    >>> @dagster.op(config_schema=config_schema)
+    >>> @dagster.op(config_schema=model_to_config_schema(Parent))
     ... def test_op(context):
     ...     return context.op_config
     ...
@@ -58,24 +57,39 @@ def model_to_config_schema(model):
     >>> Parent.parse_obj(result)
     Parent(children=[Child(a=1, b='test', c=(1, 2))], optional_child=None)
 
-    The same with work with pydantic data classes as well:
-    >>> import pydantic
-    >>> @pydantic.dataclasses.dataclass
-    ... class D:
-    ...     a: str
-    ...     b: int | None = None
-    ...
-    >>> config_schema = model_to_config_schema(Parent)
-    >>> context = dagster.build_op_context(config={"a": "test"})
-    >>> result = test_op(context)
-
     Validation should work as expected:
     >>> context = dagster.build_op_context(config={"children": [{"a": 1, "b": "test", "c": ["wrong"]}]})
     >>> result = test_op(context)
     Traceback (most recent call last):
     ...
     dagster._core.errors.DagsterInvalidConfigError: Error in config for op
-    Error 1: Invalid scalar at path root:config:children[0]:c[0]. Value "wrong" of type "<class 'str'>" is not valid for expected type "Int".
+        Error 1: Invalid scalar at path root:config:children[0]:c[0]. Value "wrong" of type "<class 'str'>" is not valid for expected type "Int".
+
+    If we want the config to be parsed directly, we can use the `convert` argument:
+    >>> @dagster.op(config_schema=model_to_config_schema(Parent, convert=True))
+    ... def test_convert_op(context):
+    ...     return context.op_config
+    ...
+    >>> context = dagster.build_op_context(config={"children": [{"a": 1, "b": "test", "c": [1, 2]}]})
+    >>> result = test_convert_op(context)
+    >>> result
+    Parent(children=[Child(a=1, b='test', c=(1, 2))], optional_child=None)
+
+
+    The same will work with pydantic data classes as well:
+    >>> import pydantic
+    >>> @pydantic.dataclasses.dataclass
+    ... class D:
+    ...     a: str
+    ...     b: int | None = None
+    ...
+    >>> @dagster.op(config_schema=model_to_config_schema(D))
+    ... def test_op(context):
+    ...     return context.op_config
+    ...
+    >>> test_op(dagster.build_op_context(config={"a": "test"}))
+    {'a': 'test'}
+
 
     """
     for type_annotation, dagster_type in {
@@ -119,6 +133,24 @@ def model_to_config_schema(model):
                 if field_kwargs
                 else field_schema
             )
+        if convert:
+            # Since each shape is cached based on it's fields and we do not want
+            # to cache the fields if the model is different, we add the model
+            # name itself to the field definition as a non-required field.
+            result = dagster.Shape(
+                config_schema
+                | {
+                    "__pydantic_model": dagster.Field(
+                        str,
+                        default_value=f"{model.__module__}.{model.__name__}",
+                        is_required=False,
+                    )
+                }
+            )
+            # WARNING: this is probably dangerous, but subclassing shape does
+            # not work well either.
+            result.post_process = model.parse_obj  # type: ignore
+            return result
         return dagster.Shape(config_schema)
     else:
         return model
