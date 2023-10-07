@@ -37,6 +37,7 @@ def model_to_config_schema(model, convert = False):
     ...     a: int
     ...     b: str
     ...     c: tuple[int, ...] = ()
+    ...     d: bool
     ...
     >>> class Parent(BaseModel):
     ...     children: list[Child]
@@ -50,15 +51,15 @@ def model_to_config_schema(model, convert = False):
     >>> context = dagster.build_op_context(config={"children": [{"a": 1, "b": "test", "c": [1, 2]}]})
     >>> result = test_op(context)
     >>> result
-    {'children': [{'a': 1, 'b': 'test', 'c': [1, 2]}]}
+    {'children': [{'a': 1, 'b': 'test', 'c': [1, 2], 'd': True}]}
 
     The config should now also be parsable by the pydantic model:
 
     >>> Parent.parse_obj(result)
-    Parent(children=[Child(a=1, b='test', c=(1, 2))], optional_child=None)
+    Parent(children=[Child(a=1, b='test', c=(1, 2), d=True)], optional_child=None)
 
     Validation should work as expected:
-    >>> context = dagster.build_op_context(config={"children": [{"a": 1, "b": "test", "c": ["wrong"]}]})
+    >>> context = dagster.build_op_context(config={"children": [{"a": 1, "b": "test", "c": ["wrong"], "d": True}]})
     >>> result = test_op(context)
     Traceback (most recent call last):
     ...
@@ -70,10 +71,10 @@ def model_to_config_schema(model, convert = False):
     ... def test_convert_op(context):
     ...     return context.op_config
     ...
-    >>> context = dagster.build_op_context(config={"children": [{"a": 1, "b": "test", "c": [1, 2]}]})
+    >>> context = dagster.build_op_context(config={"children": [{"a": 1, "b": "test", "c": [1, 2], "d": True}]})
     >>> result = test_convert_op(context)
     >>> result
-    Parent(children=[Child(a=1, b='test', c=(1, 2))], optional_child=None)
+    Parent(children=[Child(a=1, b='test', c=(1, 2), d=True)], optional_child=None)
 
 
     The same will work with pydantic data classes as well:
@@ -93,9 +94,9 @@ def model_to_config_schema(model, convert = False):
 
     """
     for type_annotation, dagster_type in {
+        bool: dagster.BoolSource,
         str: dagster.StringSource,
         int: dagster.IntSource,
-        bool: dagster.BoolSource,
         Path: dagster.StringSource,
         UUID: dagster.StringSource,
     }.items():
